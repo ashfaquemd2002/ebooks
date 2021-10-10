@@ -1,0 +1,85 @@
+/**
+ * 1) Run 'gradle build --scan' and follow the link at the end of the build. You will need to activate the build scan.
+ * 2) Run 'gradle --no-daemon build --scan' and follow the link at the end of the build. What are some of the suggestions made in the 'Performance' card?
+ * 3) Change a unit test to make it fail and rerun 'gradle build --scan'.  How did the build scan change?
+ * 4) Remove the "Adds build scan functionality" section from the settings.gradle file, go to https://docs.gradle.com/enterprise/gradle-plugin/#many-projects.  Take a look at the instructions there (you don't need to execute them).
+ * 5) Run the "setupInitScript" task to setup the init script discussed at the link above.
+ * 6) Run "gradle build --scan" again and verify that a scan is published.
+ *
+ * NOTE: Please keep in mind that a build scan contains metadata about your build (project names, file paths, host names) that will be uploaded to a Gradle, Inc owned server, but not the source code itself.
+ *
+ *      Tips: 1) If you click "Remember me", you won't need to activate each build scan every time you create one.
+ *            2) You can configure the build scan plugin to always generate a build scan:
+ *
+ *               buildScan {
+ *                  publishAlways()
+ *               }
+ *
+ *
+ */
+
+
+apply plugin: "java"
+
+version = "1.0"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile "commons-collections:commons-collections:3.2"
+    testCompile "junit:junit:4.11"
+}
+
+task setupInitScript {
+    doLast {
+        def initScript = new File(gradle.gradleUserHomeDir, "init.d/buildScan.gradle")
+        initScript.parentFile.mkdirs()
+        initScript.text = """
+            import com.gradle.enterprise.gradleplugin.GradleEnterprisePlugin
+            import com.gradle.scan.plugin.BuildScanPlugin
+            import org.gradle.util.GradleVersion
+
+            initscript {
+                def pluginVersion = "3.1.1"
+
+                repositories {
+                    gradlePluginPortal()
+                }
+                dependencies {
+                    classpath("com.gradle:gradle-enterprise-gradle-plugin:\${pluginVersion}")
+                }
+            }
+
+            def isTopLevelBuild = gradle.getParent() == null
+
+            if (isTopLevelBuild) {
+                def gradleVersion = GradleVersion.current().baseVersion
+                def atLeastGradle5 = gradleVersion >= GradleVersion.version("5.0")
+                def atLeastGradle6 = gradleVersion >= GradleVersion.version("6.0")
+
+                if (atLeastGradle6) {
+                    settingsEvaluated {
+                        if (!it.pluginManager.hasPlugin("com.gradle.enterprise")) {
+                            it.pluginManager.apply(GradleEnterprisePlugin)
+                        }
+                        configureExtension(it.extensions["gradleEnterprise"].buildScan)
+                    }
+                } else if (atLeastGradle5) {
+                    rootProject {
+                        pluginManager.apply(BuildScanPlugin)
+                        configureExtension(extensions["buildScan"])
+                    }
+                }
+            }
+
+            void configureExtension(extension) {
+                extension.with {
+                    termsOfServiceUrl = "https://gradle.com/terms-of-service"
+                    termsOfServiceAgree = "yes"
+                }
+            }
+        """
+    }
+}
